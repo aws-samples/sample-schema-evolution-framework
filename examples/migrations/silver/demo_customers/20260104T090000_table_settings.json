@@ -1,0 +1,11 @@
+{
+  "metadata": {
+    "layer": "silver",
+    "table": "demo_customers"
+  },
+  "changes": [
+    {"change_type": "set_column_nullability", "column_name": "customer_id", "target_not_null": true},
+    {"change_type": "set_sort_order", "column_name": "__sort_order__", "sort_fields": [{"column": "customer_id", "direction": "asc"}], "rebuild": false},
+    {"change_type": "set_table_properties", "column_name": "__table_properties__", "properties": {"write.target-file-size-bytes": "268435456"}}
+  ]
+}

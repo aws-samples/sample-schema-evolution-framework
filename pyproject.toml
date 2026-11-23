@@ -1,0 +1,58 @@
+[project]
+name = "schema-evolution-toolkit"
+version = "1.0.0"
+description = "Declarative schema migrations for Apache Iceberg tables on Amazon S3 Tables (PyIceberg + AWS Glue)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3==1.43.127",
+    "pyarrow==26.0.1",
+    "pyiceberg[pyarrow,rest-sigv4]==0.12.0",
+    "pyyaml==6.0.3",
+]
+
+[project.optional-dependencies]
+# Spark-side modules (backfill jobs). AWS Glue 5.x ships Spark 3.5.
+spark = ["pyspark==3.5.9"]
+# CDK app under infra/.
+infra = ["aws-cdk-lib==2.275.0", "constructs==10.8.1"]
+dev = [
+    "pytest==9.2.0",
+    "ruff==0.17.4",
+    # Tests use an in-memory SQLite Iceberg catalog.
+    "pyiceberg[sql-sqlite]==0.12.0",
+    "schema-evolution-toolkit[spark,infra]",
+]
+
+[project.scripts]
+schema-evolution-apply = "schema_evolution.apply:main"
+schema-evolution-plan = "schema_evolution.plan:main"
+schema-evolution-config-sync = "schema_evolution.config_sync:main"
+schema-evolution-generate-env-plans = "schema_evolution.generate_env_plans:main"
+schema-evolution-trigger-backfill = "schema_evolution.trigger_backfill:main"
+schema-evolution-validate = "schema_evolution.validate:main"
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/schema_evolution", "src/schema_evolution_spark"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "unit: fast tests with no AWS access",
+    "integration: needs real AWS resources (not run by default)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "infra"]
+exclude = ["infra/cdk.out"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008"]

@@ -1,0 +1,5 @@
+# Root GitLab pipeline file for your project repository.
+# If your repository already has a .gitlab-ci.yml, don't copy this one:
+# add the include line below to your existing file instead.
+include:
+  - local: ci/schema-migrations.gitlab-ci.yml

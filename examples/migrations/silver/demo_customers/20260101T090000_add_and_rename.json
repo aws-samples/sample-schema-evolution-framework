@@ -1,0 +1,12 @@
+{
+  "metadata": {
+    "layer": "silver",
+    "table": "demo_customers"
+  },
+  "changes": [
+    {"change_type": "add_column", "column_name": "loyalty_tier", "target_type": "string"},
+    {"change_type": "rename_column", "column_name": "email_domain", "previous_name": "email_host"},
+    {"change_type": "compatible_type_change", "column_name": "lifetime_value", "current_type": "decimal(18,2)", "target_type": "decimal(20,2)"},
+    {"change_type": "drop_column", "column_name": "legacy_score"}
+  ]
+}

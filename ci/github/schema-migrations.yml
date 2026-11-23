@@ -1,0 +1,95 @@
+# Schema migrations pipeline for GitHub Actions.
+#
+# Put this file and schema-migrations-apply.yml in .github/workflows/ of YOUR
+# project repository (the one that holds migrations/), not the toolkit repo.
+# Full setup: docs/installation.md in the toolkit.
+#
+#   pull request  -> validate plans offline (no AWS); edits/deletes of merged plans fail
+#   merge to main -> apply to dev
+#   tag v*.*.*    -> apply to qa, then prod (protect the "prod" environment with
+#                    required reviewers to get a manual approval)
+#
+# Settings -> Secrets and variables -> Actions -> Variables (repository):
+#   SCHEMA_EVOLUTION_TOOLKIT  where pip installs the toolkit from, e.g.
+#     schema-evolution-toolkit @ git+https://github.com/<org>/schema-evolution-toolkit.git@v1.0.0
+# Settings -> Environments, for each of dev / qa / prod:
+#   AWS_ACCOUNT_ID  account that owns the S3 Tables buckets
+#   AWS_ROLE_ARN    role trusted for GitHub OIDC, with the
+#                   {prefix}-{env}-schema-evolution-applier policy attached
+name: schema-migrations
+
+on:
+  pull_request:
+    paths: ["migrations/**"]
+  # No paths filter on push: GitHub applies it to tag pushes too, and a release
+  # tag rarely touches migrations/. Apply is a quick no-op when nothing is new.
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to apply to
+        type: choice
+        options: [dev, qa, prod]
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # needed to compare against the base branch
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Values reach run: scripts only through env, never as ${{ }} inside the
+      # script, so a crafted value (e.g. a branch name) can't inject shell code.
+      - run: pip install "$SCHEMA_EVOLUTION_TOOLKIT"
+        env:
+          SCHEMA_EVOLUTION_TOOLKIT: ${{ vars.SCHEMA_EVOLUTION_TOOLKIT }}
+      - name: Validate migration plans
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: schema-evolution-validate --migrations_dir migrations/ --base_ref "origin/$BASE_REF"
+
+  apply-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/schema-migrations-apply.yml
+    with:
+      environment: dev
+    permissions:
+      contents: read
+      id-token: write
+
+  apply-qa:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/schema-migrations-apply.yml
+    with:
+      environment: qa
+    permissions:
+      contents: read
+      id-token: write
+
+  apply-prod:
+    needs: apply-qa
+    uses: ./.github/workflows/schema-migrations-apply.yml
+    with:
+      environment: prod
+    permissions:
+      contents: read
+      id-token: write
+
+  apply-manual:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/schema-migrations-apply.yml
+    with:
+      environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write

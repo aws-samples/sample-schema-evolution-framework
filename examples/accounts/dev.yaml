@@ -1,0 +1,3 @@
+# Used by schema-evolution-generate-env-plans --accounts_dir examples/accounts
+# Replace with the account that owns your S3 Tables buckets for this environment.
+account_id: "111111111111"

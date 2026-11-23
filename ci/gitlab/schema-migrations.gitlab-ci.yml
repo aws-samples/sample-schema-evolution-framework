@@ -1,0 +1,103 @@
+# Schema migrations pipeline for GitLab CI.
+#
+# Put this file in YOUR project repository (the one that holds migrations/),
+# not the toolkit repo, and include it from .gitlab-ci.yml:
+#   include:
+#     - local: ci/schema-migrations.gitlab-ci.yml
+# Full setup: docs/installation.md in the toolkit.
+#
+#   merge request -> validate plans offline (no AWS); edits/deletes of merged plans fail
+#   merge to main -> apply to dev
+#   tag v*.*.*    -> apply to qa, then prod (prod is a manual job; protect the
+#                    "prod" environment so only approved users can run it)
+#
+# Configure in Settings -> CI/CD -> Variables, scoped to each environment (dev / qa / prod):
+#   AWS_ACCOUNT_ID  account that owns the S3 Tables buckets
+#   AWS_ROLE_ARN    role trusted for GitLab OIDC, with the
+#                   {prefix}-{env}-schema-evolution-applier policy attached
+
+variables:
+  # Where pip installs the toolkit from. Pin a tag so every environment runs the same code.
+  # A CI/CD variable with the same name overrides this value.
+  SCHEMA_EVOLUTION_TOOLKIT: "schema-evolution-toolkit @ git+https://github.com/<your-org>/schema-evolution-toolkit.git@v1.0.0"
+  SCHEMA_EVOLUTION_REGION: us-west-2
+  SCHEMA_EVOLUTION_PREFIX: dp
+
+stages:
+  - validate
+  - migrate
+
+.schema-evolution-toolkit:
+  image: python:3.12 # includes git, which pip needs for git+https installs
+  before_script:
+    - pip install --quiet "$SCHEMA_EVOLUTION_TOOLKIT"
+
+schema-migrations:validate:
+  extends: .schema-evolution-toolkit
+  stage: validate
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - migrations/**/*
+  variables:
+    GIT_DEPTH: 0 # needed to compare against the target branch
+  script:
+    - git fetch --quiet origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+    - schema-evolution-validate --migrations_dir migrations/ --base_ref "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+
+.schema-migrations:apply:
+  extends: .schema-evolution-toolkit
+  stage: migrate
+  timeout: 45m
+  # Never run two applies against the same environment at once.
+  resource_group: schema-migrations-$TARGET_ENV
+  id_tokens:
+    AWS_OIDC_TOKEN:
+      aud: sts.amazonaws.com # must match the audience on the IAM OIDC provider
+  script:
+    # boto3 assumes AWS_ROLE_ARN with this token by itself (no AWS CLI needed).
+    - echo "$AWS_OIDC_TOKEN" > "$CI_PROJECT_DIR/.aws-web-identity-token"
+    - export AWS_WEB_IDENTITY_TOKEN_FILE="$CI_PROJECT_DIR/.aws-web-identity-token"
+    - export AWS_ROLE_SESSION_NAME="gitlab-$CI_PROJECT_ID-$CI_PIPELINE_ID"
+    - export AWS_REGION="$SCHEMA_EVOLUTION_REGION"
+    - schema-evolution-validate --migrations_dir migrations/
+    - >
+      schema-evolution-apply
+      --region "$SCHEMA_EVOLUTION_REGION"
+      --account_id "$AWS_ACCOUNT_ID"
+      --environment "$TARGET_ENV"
+      --bucket_prefix "$SCHEMA_EVOLUTION_PREFIX"
+      --migrations_dir migrations/
+  after_script:
+    - rm -f "$CI_PROJECT_DIR/.aws-web-identity-token"
+
+schema-migrations:apply-dev:
+  extends: .schema-migrations:apply
+  variables:
+    TARGET_ENV: dev
+  environment:
+    name: dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - migrations/**/*
+
+schema-migrations:apply-qa:
+  extends: .schema-migrations:apply
+  variables:
+    TARGET_ENV: qa
+  environment:
+    name: qa
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+schema-migrations:apply-prod:
+  extends: .schema-migrations:apply
+  needs: ["schema-migrations:apply-qa"]
+  variables:
+    TARGET_ENV: prod
+  environment:
+    name: prod
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+      when: manual

@@ -1,0 +1,9 @@
+{
+  "metadata": {
+    "layer": "gold",
+    "table": "demo_customer_summary"
+  },
+  "changes": [
+    {"change_type": "rename_table", "column_name": "__table__", "previous_name": "demo_customer_rollup"}
+  ]
+}

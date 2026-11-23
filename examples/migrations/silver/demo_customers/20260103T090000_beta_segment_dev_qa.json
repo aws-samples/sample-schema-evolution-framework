@@ -1,0 +1,10 @@
+{
+  "metadata": {
+    "layer": "silver",
+    "table": "demo_customers",
+    "environments": ["dev", "qa"]
+  },
+  "changes": [
+    {"change_type": "add_column", "column_name": "beta_segment", "target_type": "string"}
+  ]
+}

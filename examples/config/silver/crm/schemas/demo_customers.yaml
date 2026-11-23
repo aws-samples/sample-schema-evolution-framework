@@ -1,0 +1,44 @@
+# Example schema file: the desired state of silver table `demo_customers`.
+#
+# `schema-evolution-plan` diffs this file against the live Iceberg table and
+# writes a migration plan.
+#
+# All names and values here are illustrative.
+target_table: demo_customers
+
+fields:
+  - table_column: customer_id
+    table_data_type: long
+    not_null: true            # Iceberg "required"
+    merge_key: true           # used by the env-column backfill MERGE
+
+  - table_column: full_name
+    table_data_type: string
+
+  - table_column: email_domain
+    table_data_type: string
+    previous_table_column: email_host   # rename: email_host -> email_domain
+
+  - table_column: lifetime_value
+    table_data_type: decimal(20,2)      # widened from decimal(18,2): metadata-only
+
+  - table_column: signup_date
+    table_data_type: timestamp          # was date: needs the Glue backfill
+
+  - table_column: loyalty_tier
+    table_data_type: string             # new column
+
+  - table_column: beta_segment
+    table_data_type: string
+    environments: [dev, qa]             # only exists in dev and qa
+
+partition_strategy:
+  partition_by:
+    - column: signup_date
+      transform: month
+  sort_order:
+    - column: customer_id
+      direction: asc
+
+table_properties:
+  write.target-file-size-bytes: "268435456"

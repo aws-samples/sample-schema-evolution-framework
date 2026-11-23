@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "layer": "silver",
+    "table": "demo_customers"
+  },
+  "changes": [
+    {
+      "change_type": "incompatible_type_change",
+      "column_name": "signup_date",
+      "current_type": "date",
+      "target_type": "timestamp",
+      "transformation": "CAST(signup_date AS timestamp)",
+      "new_partition": {"transform": "month"}
+    }
+  ]
+}

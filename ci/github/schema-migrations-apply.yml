@@ -1,0 +1,64 @@
+# Reusable workflow: apply migration plans to one environment.
+# Called by schema-migrations.yml; both files go in .github/workflows/ of your project repository.
+name: schema-migrations-apply
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      aws_region:
+        type: string
+        default: us-west-2
+      prefix:
+        type: string
+        default: dp
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 45
+    # Never run two applies against the same environment at once (the S3 run lock
+    # also enforces this; queuing here just avoids a failed wait).
+    concurrency:
+      group: schema-migrations-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Values reach run: scripts only through env, never as ${{ }} inside the
+      # script, so a crafted value can't inject shell code.
+      - run: pip install "$SCHEMA_EVOLUTION_TOOLKIT"
+        env:
+          SCHEMA_EVOLUTION_TOOLKIT: ${{ vars.SCHEMA_EVOLUTION_TOOLKIT }}
+
+      - name: Validate migration plans
+        run: schema-evolution-validate --migrations_dir migrations/
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+
+      - name: Apply migrations to ${{ inputs.environment }}
+        env:
+          AWS_REGION_NAME: ${{ inputs.aws_region }}
+          TARGET_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          TARGET_ENV: ${{ inputs.environment }}
+          BUCKET_PREFIX: ${{ inputs.prefix }}
+        run: |
+          schema-evolution-apply \
+            --region "$AWS_REGION_NAME" \
+            --account_id "$TARGET_ACCOUNT_ID" \
+            --environment "$TARGET_ENV" \
+            --bucket_prefix "$BUCKET_PREFIX" \
+            --migrations_dir migrations/
