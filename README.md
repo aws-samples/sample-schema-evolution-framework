@@ -92,3 +92,11 @@ Run any command with `--help` for its options.
 - Python 3.11+ (AWS Glue 5.x runs 3.11)
 - An AWS account with Amazon S3 Tables
 - For `infra/`: Node.js 18+ and the AWS CDK CLI v2
+
+## Security
+
+See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+
+## License
+
+This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.

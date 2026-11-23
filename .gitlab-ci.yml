@@ -1,5 +1,0 @@
-include:
-  - local: ci/gitlab/schema-migrations.gitlab-ci.yml
-
-variables:
-  SCHEMA_EVOLUTION_TOOLKIT: "."   # install the toolkit from this repository
